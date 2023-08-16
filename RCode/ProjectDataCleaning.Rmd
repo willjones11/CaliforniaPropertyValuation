@@ -1,0 +1,206 @@
+---
+title: "Project_DataCleaning"
+author: "Thibeaux"
+date: "2023-06-30"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Libraries
+library(GGally)
+library(boot)
+library(ggplot2)
+library(tidyverse)
+library(lmboot)
+library(caret)
+library(naniar)
+library(utils)
+library(stats)
+```
+# Data Upload
+```{r}
+Full2016 <- read.csv(file.choose(), header = TRUE, fill = TRUE)
+Full2017 <- read.csv(file.choose(), header = TRUE, fill = TRUE)
+```
+# Data Cleaning
+## Take Samples
+```{r Take Sample}
+sample_size = 10000
+set.seed(1)
+
+# 2016 File
+idxs2016 = sample(1:nrow(Full2016),sample_size,replace=F)
+subsample2016 = Full2016[idxs2016,]
+
+# 2017 File
+idxs2017 = sample(1:nrow(Full2017),sample_size,replace=F)
+subsample2017 = Full2017[idxs2017,]
+```
+## Checking location of NAs
+```{r Location of NAs}
+
+# Regular NAs
+vis_miss(subsample2016)
+vis_miss(subsample2017)
+
+# Closer look at data that may have blank values
+
+# Column 23
+subsample2016$hashottuborspa <- as.factor(subsample2016$hashottuborspa)
+summary(subsample2016$hashottuborspa)
+# 98% of these values are blank - since I'm not sure if that means "false" or just missing data, this column would not be helpful.
+
+# Column 33
+subsample2016$propertycountylandusecode <- as.factor(subsample2016$propertycountylandusecode)
+summary(subsample2016$propertycountylandusecode)
+# There are less than 1% blank, so we'll keep this as a categorical variable.
+
+# Column 33 Change to Factor
+Full2016$propertycountylandusecode <- as.factor(Full2016$propertycountylandusecode)
+
+Full2017$propertycountylandusecode <- as.factor(Full2017$propertycountylandusecode)
+
+# Column 35
+subsample2016$propertyzoningdesc <- as.factor(subsample2016$propertyzoningdesc)
+summary(subsample2016$propertyzoningdesc)
+# Half the values in the sample are either blank or (other), so don't think this is helpful.
+
+# Column 50
+subsample2016$fireplaceflag <- as.factor(subsample2016$fireplaceflag)
+summary(subsample2016$fireplaceflag)
+# 99% of these values are blank - since I'm not sure if that means "false" or just missing data, this column would not be helpful.
+
+# Column 56
+subsample2016$taxdelinquencyflag <- as.factor(subsample2016$taxdelinquencyflag)
+summary(subsample2016$taxdelinquencyflag)
+# 98% of these are "other" so this column is not helpful either
+
+# Column 58
+subsample2016$censustractandblock <- as.factor(subsample2016$censustractandblock)
+summary(subsample2016$censustractandblock)
+# 94% of these are "other" so this column is not helpful either
+```
+## Select columns
+
+These columns do not have more than 9% NAs or blanks: 1, 5, 6, 9, 12:13, 18, 20, 25:27, 33:34, 36:38, 40:41, 48, 51:55
+
+```{r Select Columns}
+subset2016 <- select(Full2016, 1, 5, 6, 9, 12:13, 18, 20, 25:27, 33:34, 36:38, 40:41, 48, 51:55)
+subset2017 <- select(Full2017, 1, 5, 6, 9, 12:13, 18, 20, 25:27, 33:34, 36:38, 40:41, 48, 51:55)
+
+summary(subset2016)
+NoNA2016 <- na.omit(subset2016)
+
+summary(subset2017)
+NoNA2017 <- na.omit(subset2017)
+```
+## Compare samples from different seeds
+
+Method from: https://www.kdnuggets.com/2019/05/sample-huge-dataset-machine-learning.html
+
+This article explains how choosing a small, representative dataset from a large population can improve model training reliability.
+```{r Compare Samples 2016}
+# Seed 1 for 2016 data
+sample_size = 10000
+set.seed(1)
+idxs = sample(1:nrow(NoNA2016),sample_size,replace=F)
+subsample = NoNA2016[idxs,]
+pvalues = list()
+for (col in names(NoNA2016)) {
+  if (class(NoNA2016[,col]) %in% c("numeric","integer")) {
+    # Numeric variable. Using Kolmogorov-Smirnov test
+    
+    pvalues[[col]] = ks.test(subsample[[col]],NoNA2016[[col]])$p.value
+    
+  } else {
+    # Categorical variable. Using Pearson's Chi-square test
+    
+    probs = table(NoNA2016[[col]])/nrow(NoNA2016)
+    pvalues[[col]] = chisq.test(table(subsample[[col]]),p=probs)$p.value
+    
+  }
+}
+
+pvalues
+
+# Seed 2
+sample_size = 10000
+set.seed(2)
+idxs = sample(1:nrow(NoNA2016),sample_size,replace=F)
+subsample = NoNA2016[idxs,]
+pvalues = list()
+for (col in names(NoNA2016)) {
+  if (class(NoNA2016[,col]) %in% c("numeric","integer")) {
+    # Numeric variable. Using Kolmogorov-Smirnov test
+    
+    pvalues[[col]] = ks.test(subsample[[col]],NoNA2016[[col]])$p.value
+    
+  } else {
+    # Categorical variable. Using Pearson's Chi-square test
+    
+    probs = table(NoNA2016[[col]])/nrow(NoNA2016)
+    pvalues[[col]] = chisq.test(table(subsample[[col]]),p=probs)$p.value
+    
+  }
+}
+
+pvalues
+
+# Save sample at seed 2
+# Commented out since it has already written: write.csv(subsample, "~/DS7330/cleansubsample2016.csv", row.names=TRUE)
+```
+
+```{r Compare Samples 2017}
+# Seed 1 for 2017 data
+sample_size = 10000
+set.seed(1)
+idxs = sample(1:nrow(NoNA2017),sample_size,replace=F)
+subsample2017 = NoNA2017[idxs,]
+pvalues = list()
+for (col in names(NoNA2017)) {
+  if (class(NoNA2017[,col]) %in% c("numeric","integer")) {
+    # Numeric variable. Using Kolmogorov-Smirnov test
+    
+    pvalues[[col]] = ks.test(subsample2017[[col]],NoNA2017[[col]])$p.value
+    
+  } else {
+    # Categorical variable. Using Pearson's Chi-square test
+    
+    probs = table(NoNA2017[[col]])/nrow(NoNA2017)
+    pvalues[[col]] = chisq.test(table(subsample2017[[col]]),p=probs)$p.value
+    
+  }
+}
+
+pvalues
+
+# Seed 2
+sample_size = 10000
+set.seed(2)
+idxs = sample(1:nrow(NoNA2017),sample_size,replace=F)
+subsample2017 = NoNA2017[idxs,]
+pvalues = list()
+for (col in names(NoNA2017)) {
+  if (class(NoNA2017[,col]) %in% c("numeric","integer")) {
+    # Numeric variable. Using Kolmogorov-Smirnov test
+    
+    pvalues[[col]] = ks.test(subsample2017[[col]],NoNA2017[[col]])$p.value
+    
+  } else {
+    # Categorical variable. Using Pearson's Chi-square test
+    
+    probs = table(NoNA2017[[col]])/nrow(NoNA2017)
+    pvalues[[col]] = chisq.test(table(subsample2017[[col]]),p=probs)$p.value
+    
+  }
+}
+
+pvalues
+
+# Save sample at seed 2
+# Commented out since it has already written: write.csv(subsample2017, "~/DS7330/cleansubsample2017.csv", row.names=TRUE)
+```

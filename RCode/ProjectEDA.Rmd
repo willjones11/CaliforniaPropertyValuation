@@ -1,0 +1,216 @@
+---
+title: "Untitled"
+author: "Thibeaux"
+date: "2023-07-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Libraries 
+library(tidyverse)
+library(stats)
+# 
+library(naniar)
+# library(utils)
+
+# Libraries for data visualization
+library(GGally)
+library(ggplot2)
+# Library for VIF
+library(car)
+# Libraries for KNN
+library(class)
+library(e1071)
+library(caret)
+```
+# Data Upload
+```{r Data upload}
+Sample2016 <- read.csv('https://github.com/athibeaux/DS7330/raw/main/cleansubsample2016.csv', header = TRUE, fill = TRUE)
+Sample2017 <- read.csv('https://github.com/athibeaux/DS7330/raw/main/cleansubsample2017.csv', header = TRUE, fill = TRUE)
+```
+# Transform Y Variable
+```{r Transform Y Variable}
+Sample2016$logpropvalue <- log(Sample2016$taxvaluedollarcnt)
+Sample2017$logpropvalue <- log(Sample2017$taxvaluedollarcnt)
+
+# Before transformation
+Sample2016 %>% ggplot() + geom_histogram(aes(x = taxvaluedollarcnt))
+
+# After transformation
+Sample2016 %>% ggplot() + geom_histogram(aes(x = logpropvalue))
+
+# Change character variables into factor
+# County Land Use Type ID
+Sample2016$propertycountylandusecode <- as.factor(Sample2016$propertycountylandusecode)
+Sample2017$propertycountylandusecode <- as.factor(Sample2017$propertycountylandusecode)
+```
+Training and Validation Splits
+```{r Splitting Data}
+# 2016 Data
+trainIndex<-createDataPartition(Sample2016$logpropvalue,p=.8,list=F)
+training2016<-Sample2016[trainIndex,]
+validate2016<-Sample2016[-trainIndex,]
+
+# 2017 Data
+trainIndex<-createDataPartition(Sample2017$logpropvalue,p=.8,list=F)
+training2017<-Sample2017[trainIndex,]
+validate2017<-Sample2017[-trainIndex,]
+```
+# GG Pairs
+```{r GG Pairs}
+summary(Sample2016)
+ForGG <- select(Sample2016, 3, 4, 7, 12, 14, 18:20, 26)
+ggpairs(ForGG)
+```
+# Assumptions
+```{r}
+Sample2016 %>% ggplot() + geom_histogram(aes(x = bathroomcnt))
+Sample2016 %>% ggplot() + geom_histogram(aes(x = bedroomcnt))
+Sample2016 %>% ggplot() + geom_histogram(aes(x = finishedsquarefeet12))
+Sample2016 %>% ggplot() + geom_histogram(aes(x = fips))
+Sample2016 %>% ggplot() + geom_histogram(aes(x = latitude))
+Sample2016 %>% ggplot() + geom_histogram(aes(x = longitude))
+Sample2016 %>% ggplot() + geom_histogram(aes(x = lotsizesquarefeet))
+Sample2016 %>% ggplot() + geom_histogram(aes(x = propertylandusetypeid))
+Sample2016 %>% ggplot() + geom_histogram(aes(x = regionidcounty))
+Sample2016 %>% ggplot() + geom_histogram(aes(x = regionidzip))
+Sample2016 %>% ggplot() + geom_histogram(aes(x = yearbuilt))
+
+Sample2016 %>% ggplot(aes(x = bathroomcnt, y = logpropvalue)) + 
+  geom_point() + geom_smooth()
+Sample2016 %>% ggplot(aes(x = bedroomcnt, y = logpropvalue)) + 
+  geom_point() + geom_smooth()
+Sample2016 %>% ggplot(aes(x = finishedsquarefeet12, y = logpropvalue)) + 
+  geom_point() + geom_smooth()
+Sample2016 %>% ggplot(aes(x = fips, y = logpropvalue)) + 
+  geom_point() + geom_smooth()
+Sample2016 %>% ggplot(aes(x = latitude, y = logpropvalue)) + 
+  geom_point() + geom_smooth()
+Sample2016 %>% ggplot(aes(x = longitude, y = logpropvalue)) + 
+  geom_point() + geom_smooth()
+Sample2016 %>% ggplot(aes(x = lotsizesquarefeet, y = logpropvalue)) + 
+  geom_point() + geom_smooth()
+Sample2016 %>% ggplot(aes(x = propertylandusetypeid, y = logpropvalue)) + 
+  geom_point() + geom_smooth()
+Sample2016 %>% ggplot(aes(x = regionidcounty, y = logpropvalue)) + 
+  geom_point() + geom_smooth()
+Sample2016 %>% ggplot(aes(x = regionidzip, y = logpropvalue)) + 
+  geom_point() + geom_smooth()
+Sample2016 %>% ggplot(aes(x = yearbuilt, y = logpropvalue)) + 
+  geom_point() + geom_smooth()
+```
+# Modeling
+```{r MLR}
+# Everything Model
+kitchensink.model <- lm(logpropvalue~bathroomcnt + bedroomcnt + finishedsquarefeet12 + fips + latitude + longitude + lotsizesquarefeet + propertylandusetypeid + rawcensustractandblock + regionidcity + regionidcounty + regionidzip + yearbuilt, data = training2016)
+summary(kitchensink.model)
+plot(kitchensink.model)
+vif(kitchensink.model)
+
+# Adjust for VIF Model
+full.model <- lm(logpropvalue~ bathroomcnt + bedroomcnt + finishedsquarefeet12 + 
+                   latitude + longitude + lotsizesquarefeet +  propertylandusetypeid + 
+                   regionidcity + regionidcounty + regionidzip + yearbuilt, data = training2016)
+summary(full.model)
+plot(full.model)
+vif(full.model)
+
+# Remove Non-Significant Variable
+sig.model <- lm(logpropvalue~ bathroomcnt + bedroomcnt + finishedsquarefeet12 + 
+                   latitude + longitude + propertylandusetypeid + 
+                   regionidcounty + regionidzip + yearbuilt, data = training2016)
+summary(sig.model)
+plot(sig.model)
+vif(sig.model)
+
+# Log appropriate variables
+log.model <- lm(logpropvalue~ bathroomcnt + bedroomcnt + 
+                  log(finishedsquarefeet12) + latitude + 
+                  longitude + log(propertylandusetypeid) + 
+                  log(regionidcounty) + log(regionidzip) + yearbuilt, 
+                data = training2016)
+summary(log.model)
+plot(log.model)
+vif(log.model)
+
+# Log appropriate variables on 2017
+log.model2 <- lm(logpropvalue~ bathroomcnt + bedroomcnt + 
+                  log(finishedsquarefeet12) + latitude + 
+                  longitude + log(propertylandusetypeid) + 
+                  log(regionidcounty) + log(regionidzip) + yearbuilt, 
+                 data = training2017)
+summary(log.model2)
+plot(log.model2)
+vif(log.model2)
+
+# RMSE of Full Model, 2016
+full.model_Preds = predict(full.model, newdata = validate2016)
+
+MSPE = data.frame(Observed = validate2016$logpropvalue, 
+                  Predicted = full.model_Preds)
+MSPE$Residual = MSPE$Observed - MSPE$Predicted
+MSPE$SquaredResidual = MSPE$Residual^2
+sqrt(mean(MSPE$SquaredResidual))
+
+# RMSE of Custom Model, 2016
+set.seed(2323)
+custom_Preds = predict(log.model, newdata = validate2016)
+
+MSPE = data.frame(Observed = validate2016$logpropvalue, 
+                  Predicted = custom_Preds)
+MSPE$Residual = MSPE$Observed - MSPE$Predicted
+MSPE$SquaredResidual = MSPE$Residual^2
+sqrt(mean(MSPE$SquaredResidual))
+
+# RMSE of Custom Model, 2017
+set.seed(2323)
+custom_Preds = predict(log.model2, newdata = validate2017)
+
+MSPE = data.frame(Observed = validate2017$logpropvalue, 
+                  Predicted = custom_Preds)
+MSPE$Residual = MSPE$Observed - MSPE$Predicted
+MSPE$SquaredResidual = MSPE$Residual^2
+sqrt(mean(MSPE$SquaredResidual))
+```
+KNN Model
+```{r}
+fit_cont1 = trainControl(method = "repeatedcv", number = 10, repeats = 1)
+
+set.seed(1364)
+
+# 2016 Data
+knnfit1 = train(logpropvalue~ bathroomcnt + bedroomcnt + 
+                  log(finishedsquarefeet12) + fips + latitude + 
+                  longitude + log(lotsizesquarefeet) + 
+                  log(propertylandusetypeid) + log(regionidcounty) + 
+                  log(regionidzip) + yearbuilt, data = training2016, method = "knn", trControl = fit_cont1, tuneGrid = expand.grid(k = c(1:30)))
+
+plot(knnfit1)
+
+updateval = validate2016[,c("logpropvalue", "bathroomcnt", "bedroomcnt", "finishedsquarefeet12", "fips", "latitude", "longitude", "lotsizesquarefeet", "propertylandusetypeid", "regionidcounty", "regionidzip", "yearbuilt")]
+
+prediction1 = predict(knnfit1, newdata = updateval)
+
+# 2017 Data
+knnfit2 = train(logpropvalue~ log(bathroomcnt) + bedroomcnt + log(finishedsquarefeet12) + log(lotsizesquarefeet) + log(propertylandusetypeid) + log(regionidzip) + log(yearbuilt), data = training2017, method = "knn", trControl = fit_cont1, tuneGrid = expand.grid(k = c(1:30)))
+
+plot(knnfit2)
+
+updateval = validate2017[,c("logpropvalue", "bathroomcnt", "bedroomcnt", "finishedsquarefeet12", "fips", "latitude", "longitude", "lotsizesquarefeet", "propertylandusetypeid", "regionidcounty", "regionidzip", "yearbuilt")]
+
+prediction2 = predict(knnfit2, newdata = updateval)
+
+# RMSE 2016
+MSPE = data.frame(Observed = validate2016$logpropvalue, Predicted = prediction1)
+MSPE$Residual = MSPE$Observed - MSPE$Predicted
+MSPE$SquaredResidual = MSPE$Residual^2
+sqrt(mean(MSPE$SquaredResidual))
+
+# RMSE 2017
+MSPE = data.frame(Observed = validate2017$logpropvalue, Predicted = prediction2)
+MSPE$Residual = MSPE$Observed - MSPE$Predicted
+MSPE$SquaredResidual = MSPE$Residual^2
+sqrt(mean(MSPE$SquaredResidual))
+```
